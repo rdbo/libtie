@@ -13,5 +13,6 @@
 
 #include "common.h"
 #include "proc/proc.h"
+#include "dbg/dbg.h"
 
 #endif

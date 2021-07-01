@@ -16,6 +16,30 @@
 #define PROC_FREE(ptr, type) if (ptr) { free(ptr); ptr = (type)TIE_NULL; }
 #define PROC_FFREE(fmap) if (fmap) { tie_funmap(fmap); fmap = (char *)TIE_NULL; }
 
+struct _findpid_args {
+	pid_t pid;
+	const char *name;
+};
+
+static int 
+read_exe(proc_t *proc);
+
+static int 
+read_comm(proc_t *proc);
+
+static int 
+read_cwd(proc_t *proc);
+
+static int 
+read_status(proc_t *proc);
+
+static int 
+read_cmdline(proc_t *proc);
+
+static int 
+findpid_callback(pid_t pid,
+		 void *arg);
+
 TIE_API int 
 tie_enumprocs(int( *callback)(pid_t   pid, 
 			      void   *arg),
@@ -46,7 +70,63 @@ tie_enumprocs(int( *callback)(pid_t   pid,
 	return TIE_OK;
 }
 
-static int read_exe(proc_t *proc)
+TIE_API int 
+tie_openproc(pid_t   pid, 
+	     proc_t *proc)
+{
+	int retchk = 0;
+
+	if (!proc)
+		return TIE_ARGS;
+	
+	memset((void *)proc, 0x0, sizeof(*proc));
+	proc->id = pid;
+
+	RETCHK(read_exe);
+	RETCHK(read_comm);
+	RETCHK(read_cwd);
+	RETCHK(read_status);
+	RETCHK(read_cmdline);
+
+	return retchk != TIE_OK ? TIE_PROC_FS : TIE_OK;
+}
+
+TIE_API void 
+tie_closeproc(proc_t *proc)
+{
+	if (!proc)
+		return;
+
+	proc->id = proc->parent = proc->tracer = 0;
+	proc->owner = 0;
+	proc->threads = 0;
+	proc->state = '\x00';
+	PROC_FREE(proc->path,    char *);
+	PROC_FREE(proc->cwd,     char *);
+	PROC_FREE(proc->name,    char *);
+	PROC_FFREE(proc->name);
+	PROC_FFREE(proc->cmdline);
+}
+
+TIE_API pid_t 
+tie_getpid(void)
+{
+	return getpid();
+}
+
+TIE_API pid_t 
+tie_findpid(const char *name)
+{
+	struct _findpid_args args;
+	args.pid = -1;
+	args.name = name;
+
+	tie_enumprocs(findpid_callback, (void *)&args);
+	return args.pid;
+}
+
+static int 
+read_exe(proc_t *proc)
 {
 	char exe_path[64] = { 0 };
 
@@ -62,7 +142,8 @@ static int read_exe(proc_t *proc)
 	return proc->path ? TIE_OK : TIE_PROC_FS;
 }
 
-static int read_comm(proc_t *proc)
+static int 
+read_comm(proc_t *proc)
 {
 	char comm_path[64] = { 0 };
 	size_t size;
@@ -81,7 +162,8 @@ static int read_comm(proc_t *proc)
 	return proc->name ? TIE_OK : TIE_PROC_FS;
 }
 
-static int read_cwd(proc_t *proc)
+static int 
+read_cwd(proc_t *proc)
 {
 	char cwd_path[64] = { 0 };
 
@@ -97,7 +179,8 @@ static int read_cwd(proc_t *proc)
 	return proc->cwd ? TIE_OK : TIE_PROC_FS;
 }
 
-static int read_status(proc_t *proc)
+static int 
+read_status(proc_t *proc)
 {
 	char status_path[64] = { 0 };
 	char *status_file;
@@ -143,7 +226,8 @@ static int read_status(proc_t *proc)
 	return TIE_OK;
 }
 
-static int read_cmdline(proc_t *proc)
+static int 
+read_cmdline(proc_t *proc)
 {
 	char cmdline_path[64] = { 0 };
 
@@ -159,40 +243,18 @@ static int read_cmdline(proc_t *proc)
 	return proc->cmdline ? TIE_OK : TIE_PROC_FS;
 }
 
-TIE_API int 
-tie_openproc(pid_t   pid, 
-	     proc_t *proc)
+static int 
+findpid_callback(pid_t pid,
+		 void *arg)
 {
-	int retchk = 0;
+	proc_t proc;
+	struct _findpid_args *parg = (struct _findpid_args *)arg;
 
-	if (!proc)
-		return TIE_ARGS;
-	
-	memset((void *)proc, 0x0, sizeof(*proc));
-	proc->id = pid;
+	if (tie_openproc(pid, &proc) == TIE_OK && 
+	    !strcmp(parg->name, proc.name)) {
+		parg->pid = pid;
+		return TIE_FALSE;	
+	}
 
-	RETCHK(read_exe);
-	RETCHK(read_comm);
-	RETCHK(read_cwd);
-	RETCHK(read_status);
-	RETCHK(read_cmdline);
-
-	return retchk != TIE_OK ? TIE_PROC_FS : TIE_OK;
-}
-
-TIE_API void 
-tie_closeproc(proc_t *proc)
-{
-	if (!proc)
-		return;
-
-	proc->id = proc->parent = proc->tracer = 0;
-	proc->owner = 0;
-	proc->threads = 0;
-	proc->state = '\x00';
-	PROC_FREE(proc->path,    char *);
-	PROC_FREE(proc->cwd,     char *);
-	PROC_FREE(proc->name,    char *);
-	PROC_FFREE(proc->name);
-	PROC_FFREE(proc->cmdline);
+	return TIE_TRUE;
 }

@@ -2,6 +2,8 @@
 #include <tie.h>
 #include <unistd.h>
 
+#define MYINT_ADDR ((void *)0x4ac0f0)
+
 int
 proc_callback(pid_t pid,
 	      void *arg)
@@ -33,8 +35,24 @@ int
 main()
 {
 	pid_t curpid;
+	pid_t pid = 0;
+	const int myint_val = 1337;
 
-	curpid = getpid();
+	curpid = tie_getpid();
 	tie_enumprocs(proc_callback, (void *)&curpid);
+
+	pid = tie_findpid("target");
+
+	if (pid == (pid_t)-1) {
+		printf("'target' is not running\n");
+		return -1;
+	}
+
+	tie_attach(pid);
+
+	tie_poke(pid, MYINT_ADDR, (void *)&myint_val, sizeof(myint_val));
+
+	tie_detach(pid);
+
 	return 0;
 }

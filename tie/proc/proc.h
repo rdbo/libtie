@@ -32,4 +32,10 @@ tie_openproc(pid_t   pid,
 TIE_API void 
 tie_closeproc(proc_t *proc);
 
+TIE_API pid_t 
+tie_getpid(void);
+
+TIE_API pid_t 
+tie_findpid(const char *name);
+
 #endif
